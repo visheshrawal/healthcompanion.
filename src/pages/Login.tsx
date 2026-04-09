@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Heart, Mail, Lock, ArrowRight } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 
 export function Login() {
   const navigate = useNavigate()
@@ -18,7 +19,25 @@ export function Login() {
 
     try {
       await signIn(email, password)
-      navigate('/dashboard')
+      
+      // Get user role and redirect accordingly
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (user) {
+        const { data: profile } = await supabase
+          .from('user_profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+        
+        if (profile?.role === 'doctor') {
+          navigate('/doctor/dashboard')
+        } else {
+          navigate('/dashboard')
+        }
+      } else {
+        navigate('/dashboard')
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to sign in')
     } finally {

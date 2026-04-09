@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
+import { DoctorSidebar } from '../components/layouts/DoctorSidebar'
 import { 
   Calendar, 
   Users, 
@@ -170,7 +171,9 @@ export function DoctorDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950/20 to-slate-950">
-      <div className="p-8">
+      <DoctorSidebar />
+      
+      <div className="ml-64 p-8">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="mb-8">
@@ -178,7 +181,7 @@ export function DoctorDashboard() {
               Doctor Dashboard
             </h1>
             <p className="text-gray-400">
-              Welcome back, Dr. {user?.user_metadata?.full_name || 'Doctor'}
+              Welcome back, Dr. {user?.user_metadata?.full_name || doctorProfile?.full_name || 'Doctor'}
             </p>
           </div>
 
