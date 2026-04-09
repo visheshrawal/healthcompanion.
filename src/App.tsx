@@ -17,6 +17,13 @@ import { VerifyEmail } from './pages/VerifyEmail'
 import { CompleteProfile } from './pages/CompleteProfile'
 import { DoctorDashboard } from './pages/DoctorDashboard'
 
+// Doctor Pages (we'll create these next)
+import { DoctorAppointments } from './pages/doctor/DoctorAppointments'
+import { DoctorPatients } from './pages/doctor/DoctorPatients'
+import { DoctorPrescriptions } from './pages/doctor/DoctorPrescriptions'
+import { DoctorProfile } from './pages/doctor/DoctorProfile'
+import { DoctorSettings } from './pages/doctor/DoctorSettings'
+
 function App() {
   return (
     <AuthProvider>
@@ -82,6 +89,31 @@ function App() {
         <Route path="/doctor/dashboard" element={
           <DoctorRoute>
             <DoctorDashboard />
+          </DoctorRoute>
+        } />
+        <Route path="/doctor/appointments" element={
+          <DoctorRoute>
+            <DoctorAppointments />
+          </DoctorRoute>
+        } />
+        <Route path="/doctor/patients" element={
+          <DoctorRoute>
+            <DoctorPatients />
+          </DoctorRoute>
+        } />
+        <Route path="/doctor/prescriptions" element={
+          <DoctorRoute>
+            <DoctorPrescriptions />
+          </DoctorRoute>
+        } />
+        <Route path="/doctor/profile" element={
+          <DoctorRoute>
+            <DoctorProfile />
+          </DoctorRoute>
+        } />
+        <Route path="/doctor/settings" element={
+          <DoctorRoute>
+            <DoctorSettings />
           </DoctorRoute>
         } />
         

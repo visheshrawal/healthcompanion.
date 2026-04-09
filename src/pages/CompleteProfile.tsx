@@ -398,10 +398,10 @@ export function CompleteProfile() {
                   </div>
 
                   <div>
-                    <label className="block text-sm text-gray-400 mb-2">Consultation Fee ($)</label>
+                    <label className="block text-sm text-gray-400 mb-2">Consultation Fee (₹)</label>
                     <input
                       type="number"
-                      step="0.01"
+                      step="1"
                       value={doctorProfile.consultation_fee || ''}
                       onChange={(e) => setDoctorProfile({ ...doctorProfile, consultation_fee: parseFloat(e.target.value) || null })}
                       className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:border-purple-500"

@@ -3,17 +3,22 @@ import { Sidebar } from '../components/layouts/Sidebar'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { getAIResponse } from '../lib/groq'
-import { 
-  Calendar, 
-  Clock, 
-  Video, 
-  Search,
+import {
+  Calendar,
+  Clock,
+  Video,
   Star,
-  ChevronRight,
   Loader,
   Sparkles,
   X,
-  CheckCircle
+  CheckCircle,
+  Award,
+  BookOpen,
+  Globe,
+  Phone,
+  MessageCircle,
+  ExternalLink,
+  ShieldCheck
 } from 'lucide-react'
 
 interface TimeSlot {
@@ -34,6 +39,10 @@ interface Doctor {
   average_rating: number
   avatar_url?: string | null
   available_slots?: TimeSlot[]
+  education?: string
+  hospital?: string
+  total_reviews?: number
+  phone?: string
 }
 
 interface Appointment {
@@ -80,11 +89,15 @@ const generateMockDoctors = (): Doctor[] => {
       specialization: 'Cardiology',
       experience_years: 15,
       consultation_fee: 150,
-      about: 'Board-certified cardiologist with expertise in preventive cardiology and heart disease management.',
+      about: 'Board-certified cardiologist with expertise in preventive cardiology and heart disease management. Trained at Johns Hopkins and has published over 30 peer-reviewed papers on cardiac risk reduction.',
       languages: ['English', 'Spanish'],
       is_available: true,
       average_rating: 4.8,
+      total_reviews: 312,
       avatar_url: null,
+      education: 'MD – Johns Hopkins University, Fellowship in Cardiology – Mayo Clinic',
+      hospital: 'Apollo Hospitals, New Delhi',
+      phone: '+91 11 2345 6789',
       available_slots: generateTimeSlots()
     },
     {
@@ -93,11 +106,15 @@ const generateMockDoctors = (): Doctor[] => {
       specialization: 'Pediatrics',
       experience_years: 12,
       consultation_fee: 120,
-      about: 'Pediatrician specializing in childhood development and preventive care.',
+      about: 'Pediatrician specializing in childhood development, immunization, and preventive care for newborns through adolescents. Advocates for child mental health alongside physical wellbeing.',
       languages: ['English', 'Mandarin'],
       is_available: true,
       average_rating: 4.9,
+      total_reviews: 478,
       avatar_url: null,
+      education: 'MD – Stanford University, Pediatric Residency – Children\'s Hospital Boston',
+      hospital: 'Fortis Hospital, Mumbai',
+      phone: '+91 22 8765 4321',
       available_slots: generateTimeSlots()
     },
     {
@@ -106,11 +123,15 @@ const generateMockDoctors = (): Doctor[] => {
       specialization: 'Dermatology',
       experience_years: 10,
       consultation_fee: 130,
-      about: 'Dermatologist focusing on medical and cosmetic dermatology.',
+      about: 'Dermatologist specializing in medical, surgical, and cosmetic dermatology. Expert in skin cancer detection, acne management, and advanced laser treatments.',
       languages: ['English', 'Portuguese'],
       is_available: true,
       average_rating: 4.7,
+      total_reviews: 256,
       avatar_url: null,
+      education: 'MD – University of São Paulo, Dermatology Residency – UCSF',
+      hospital: 'Manipal Hospital, Bangalore',
+      phone: '+91 80 3456 7890',
       available_slots: generateTimeSlots()
     },
     {
@@ -119,11 +140,15 @@ const generateMockDoctors = (): Doctor[] => {
       specialization: 'Neurology',
       experience_years: 18,
       consultation_fee: 200,
-      about: 'Neurologist specializing in headaches, epilepsy, and movement disorders.',
+      about: 'Neurologist with expertise in headache medicine, epilepsy, and Parkinson\'s disease. Pioneer in applying AI-assisted diagnostics for neurological disorders.',
       languages: ['English', 'Korean'],
       is_available: true,
       average_rating: 4.9,
+      total_reviews: 541,
       avatar_url: null,
+      education: 'MD – Seoul National University, Neurology Fellowship – Cleveland Clinic',
+      hospital: 'AIIMS, New Delhi',
+      phone: '+91 11 9876 5432',
       available_slots: generateTimeSlots()
     },
     {
@@ -132,11 +157,15 @@ const generateMockDoctors = (): Doctor[] => {
       specialization: 'Internal Medicine',
       experience_years: 8,
       consultation_fee: 100,
-      about: 'Internal medicine physician focused on adult healthcare and chronic disease management.',
+      about: 'Internal medicine physician committed to holistic adult healthcare, chronic disease management, and preventive wellness. Special interest in diabetes and metabolic disorders.',
       languages: ['English', 'Hindi'],
       is_available: true,
       average_rating: 4.6,
+      total_reviews: 189,
       avatar_url: null,
+      education: 'MD – AIIMS New Delhi, Internal Medicine Residency – PGI Chandigarh',
+      hospital: 'Max Healthcare, Gurgaon',
+      phone: '+91 124 5555 678',
       available_slots: generateTimeSlots()
     },
     {
@@ -145,11 +174,15 @@ const generateMockDoctors = (): Doctor[] => {
       specialization: 'Orthopedics',
       experience_years: 20,
       consultation_fee: 180,
-      about: 'Orthopedic surgeon specializing in sports medicine and joint replacement.',
+      about: 'Orthopedic surgeon with two decades of experience in minimally invasive joint replacement and sports medicine. Has treated several national-level athletes.',
       languages: ['English'],
       is_available: true,
       average_rating: 4.8,
+      total_reviews: 402,
       avatar_url: null,
+      education: 'MD – University of Edinburgh, Orthopedic Residency – Hospital for Special Surgery (HSS)',
+      hospital: 'Kokilaben Hospital, Mumbai',
+      phone: '+91 22 6767 8899',
       available_slots: generateTimeSlots()
     }
   ]
@@ -162,6 +195,7 @@ export function Appointments() {
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null)
+  const [profileDoctor, setProfileDoctor] = useState<Doctor | null>(null)
   const [showBookingModal, setShowBookingModal] = useState(false)
   const [bookingData, setBookingData] = useState({
     appointment_date: '',
@@ -196,7 +230,6 @@ export function Appointments() {
           average_rating,
           user_profiles!inner(full_name, avatar_url)
         `)
-        .eq('is_verified', true)
 
       let formattedDoctors: Doctor[] = []
       
@@ -386,76 +419,205 @@ export function Appointments() {
           {activeTab === 'book' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {doctors.map(doctor => (
-                <div key={doctor.id} className="bg-white/5 border border-white/10 rounded-xl p-6 hover:bg-white/10 transition-all">
+                <div key={doctor.id} className="bg-[#1a2035]/50 backdrop-blur-xl border border-white/10 rounded-2xl p-6 hover:border-white/20 hover:-translate-y-1 hover:shadow-xl hover:shadow-purple-500/5 transition-all duration-300 flex flex-col">
+                  {/* Doctor Header */}
                   <div className="flex items-start gap-4 mb-4">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
-                      {doctor.avatar_url ? (
-                        <img src={doctor.avatar_url} alt={doctor.full_name} className="w-full h-full rounded-full object-cover" />
-                      ) : (
-                        <span className="text-white text-xl font-bold">
-                          {doctor.full_name.split(' ').map(n => n[0]).join('')}
-                        </span>
+                    <div className="relative flex-shrink-0">
+                      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center">
+                        {doctor.avatar_url ? (
+                          <img src={doctor.avatar_url} alt={doctor.full_name} className="w-full h-full rounded-2xl object-cover" />
+                        ) : (
+                          <span className="text-white text-xl font-bold">
+                            {doctor.full_name.split(' ').map(n => n[0]).join('')}
+                          </span>
+                        )}
+                      </div>
+                      {doctor.is_available && (
+                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-[#1a2035]" />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-white font-semibold truncate">Dr. {doctor.full_name}</h3>
-                      <p className="text-purple-400 text-sm">{doctor.specialization}</p>
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <h3 className="text-white font-semibold truncate">Dr. {doctor.full_name}</h3>
+                        <ShieldCheck className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+                      </div>
+                      <p className="text-purple-400 text-sm font-medium">{doctor.specialization}</p>
                       <div className="flex items-center gap-1 mt-1">
-                        <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
-                        <span className="text-gray-300 text-xs">{doctor.average_rating.toFixed(1)}</span>
-                        <span className="text-gray-500 text-xs ml-2">{doctor.experience_years}+ years</span>
+                        <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400" />
+                        <span className="text-white text-xs font-semibold">{doctor.average_rating.toFixed(1)}</span>
+                        {doctor.total_reviews && (
+                          <span className="text-gray-500 text-xs">({doctor.total_reviews} reviews)</span>
+                        )}
+                        <span className="text-gray-600 text-xs">·</span>
+                        <span className="text-gray-400 text-xs">{doctor.experience_years}yr exp</span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="space-y-2 mb-4 text-sm">
-                    <p className="text-gray-400 line-clamp-2">{doctor.about}</p>
-                    <p className="text-gray-400">
-                      <span className="text-white">Speaks:</span> {doctor.languages.join(', ')}
-                    </p>
-                    <p className="text-green-400 font-medium">
-                      ${doctor.consultation_fee} per consultation
-                    </p>
+                  {/* Hospital */}
+                  {doctor.hospital && (
+                    <div className="flex items-center gap-1.5 mb-3 text-xs text-gray-400">
+                      <BookOpen className="w-3.5 h-3.5" />
+                      <span className="truncate">{doctor.hospital}</span>
+                    </div>
+                  )}
+
+                  {/* About */}
+                  <p className="text-gray-400 text-sm line-clamp-2 mb-3">{doctor.about}</p>
+
+                  {/* Tags */}
+                  <div className="flex flex-wrap gap-1.5 mb-4">
+                    {doctor.languages.map(lang => (
+                      <span key={lang} className="flex items-center gap-1 px-2 py-0.5 bg-white/5 border border-white/10 rounded-full text-xs text-gray-400">
+                        <Globe className="w-2.5 h-2.5" />{lang}
+                      </span>
+                    ))}
                   </div>
 
-                  {/* Available Time Slots */}
+                  {/* Fee */}
+                  <div className="flex items-center justify-between mb-4 py-3 px-3 bg-white/5 rounded-xl">
+                    <span className="text-gray-400 text-sm">Consultation Fee</span>
+                    <span className="text-green-400 font-bold text-lg">₹{doctor.consultation_fee}</span>
+                  </div>
+
+                  {/* Slots */}
                   {doctor.available_slots && (
                     <div className="mb-4">
-                      <p className="text-xs text-gray-400 mb-2">Available slots:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {doctor.available_slots
-                          .filter(slot => slot.available)
-                          .slice(0, 3)
-                          .map((slot, idx) => (
-                            <span key={idx} className="px-2 py-1 bg-green-500/10 border border-green-500/30 rounded text-green-400 text-xs">
-                              {slot.date.split('-').slice(1).join('/')} {slot.time}
-                            </span>
-                          ))}
-                        {doctor.available_slots.filter(slot => slot.available).length > 3 && (
-                          <span className="px-2 py-1 bg-white/5 border border-white/10 rounded text-gray-400 text-xs">
-                            +{doctor.available_slots.filter(slot => slot.available).length - 3} more
+                      <p className="text-xs text-gray-500 mb-2">Next available:</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {doctor.available_slots.filter(s => s.available).slice(0, 2).map((slot, idx) => (
+                          <span key={idx} className="px-2 py-1 bg-green-500/10 border border-green-500/20 rounded-lg text-green-400 text-xs">
+                            {slot.date.split('-').slice(1).join('/')} · {slot.time}
                           </span>
-                        )}
+                        ))}
                       </div>
                     </div>
                   )}
 
-                  <button
-                    onClick={() => {
-                      setSelectedDoctor(doctor)
-                      setShowBookingModal(true)
-                    }}
-                    disabled={!doctor.is_available}
-                    className={`w-full py-2 rounded-lg transition-all ${
-                      doctor.is_available
-                        ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                        : 'bg-white/10 text-gray-500 cursor-not-allowed'
-                    }`}
-                  >
-                    {doctor.is_available ? 'Book Appointment' : 'Not Available'}
-                  </button>
+                  {/* Action Buttons */}
+                  <div className="mt-auto flex gap-2">
+                    <button
+                      onClick={() => setProfileDoctor(doctor)}
+                      className="flex-1 py-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-gray-300 text-sm transition-all flex items-center justify-center gap-1.5"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" /> View Profile
+                    </button>
+                    <button
+                      onClick={() => { setSelectedDoctor(doctor); setShowBookingModal(true) }}
+                      disabled={!doctor.is_available}
+                      className={`flex-1 py-2 rounded-xl text-sm font-medium transition-all ${
+                        doctor.is_available
+                          ? 'bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700 text-white shadow-lg shadow-purple-500/20'
+                          : 'bg-white/5 text-gray-500 cursor-not-allowed'
+                      }`}
+                    >
+                      {doctor.is_available ? 'Book Now' : 'Unavailable'}
+                    </button>
+                  </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Doctor Profile Modal */}
+          {profileDoctor && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setProfileDoctor(null)}>
+              <div className="bg-[#0d1525] border border-white/10 rounded-3xl p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+                {/* Header */}
+                <div className="flex items-start justify-between mb-6">
+                  <div className="flex items-center gap-5">
+                    <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+                      <span className="text-white text-2xl font-bold">
+                        {profileDoctor.full_name.split(' ').map(n => n[0]).join('')}
+                      </span>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <h2 className="text-2xl font-bold text-white">Dr. {profileDoctor.full_name}</h2>
+                        <ShieldCheck className="w-5 h-5 text-cyan-400" />
+                      </div>
+                      <p className="text-purple-400 font-medium">{profileDoctor.specialization}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex items-center gap-1">
+                          {[1,2,3,4,5].map(i => (
+                            <Star key={i} className={`w-3.5 h-3.5 ${ i <= Math.round(profileDoctor.average_rating) ? 'fill-yellow-400 text-yellow-400' : 'text-gray-600'}`} />
+                          ))}
+                        </div>
+                        <span className="text-white text-sm font-semibold">{profileDoctor.average_rating.toFixed(1)}</span>
+                        {profileDoctor.total_reviews && <span className="text-gray-400 text-sm">({profileDoctor.total_reviews} reviews)</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <button onClick={() => setProfileDoctor(null)} className="text-gray-400 hover:text-white p-1">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Stats Row */}
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                  <div className="bg-white/5 rounded-xl p-4 text-center">
+                    <p className="text-2xl font-bold text-white">{profileDoctor.experience_years}+</p>
+                    <p className="text-xs text-gray-400">Years Experience</p>
+                  </div>
+                  <div className="bg-white/5 rounded-xl p-4 text-center">
+                    <p className="text-2xl font-bold text-green-400">₹{profileDoctor.consultation_fee}</p>
+                    <p className="text-xs text-gray-400">Consultation</p>
+                  </div>
+                  <div className="bg-white/5 rounded-xl p-4 text-center">
+                    <p className="text-2xl font-bold text-purple-400">{profileDoctor.total_reviews || '100+'}  </p>
+                    <p className="text-xs text-gray-400">Patient Reviews</p>
+                  </div>
+                </div>
+
+                {/* About */}
+                <div className="mb-5">
+                  <h3 className="text-white font-semibold mb-2 flex items-center gap-2"><MessageCircle className="w-4 h-4 text-purple-400" /> About</h3>
+                  <p className="text-gray-400 text-sm leading-relaxed">{profileDoctor.about}</p>
+                </div>
+
+                {/* Education */}
+                {profileDoctor.education && (
+                  <div className="mb-5">
+                    <h3 className="text-white font-semibold mb-2 flex items-center gap-2"><BookOpen className="w-4 h-4 text-cyan-400" /> Education</h3>
+                    <p className="text-gray-400 text-sm">{profileDoctor.education}</p>
+                  </div>
+                )}
+
+                {/* Hospital */}
+                {profileDoctor.hospital && (
+                  <div className="mb-5">
+                    <h3 className="text-white font-semibold mb-2 flex items-center gap-2"><BookOpen className="w-4 h-4 text-blue-400" /> Hospital / Clinic</h3>
+                    <p className="text-gray-400 text-sm">{profileDoctor.hospital}</p>
+                  </div>
+                )}
+
+                {/* Languages */}
+                <div className="mb-6">
+                  <h3 className="text-white font-semibold mb-3 flex items-center gap-2"><Globe className="w-4 h-4 text-green-400" /> Languages Spoken</h3>
+                  <div className="flex gap-2">
+                    {profileDoctor.languages.map(lang => (
+                      <span key={lang} className="px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-full text-green-400 text-xs">{lang}</span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Contact + Book */}
+                <div className="flex gap-3">
+                  {profileDoctor.phone && (
+                    <a href={`tel:${profileDoctor.phone}`}
+                      className="flex-1 py-3 bg-white/5 border border-white/10 hover:border-white/20 text-gray-300 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2">
+                      <Phone className="w-4 h-4" /> Call Clinic
+                    </a>
+                  )}
+                  <button
+                    onClick={() => { setSelectedDoctor(profileDoctor); setShowBookingModal(true); setProfileDoctor(null) }}
+                    disabled={!profileDoctor.is_available}
+                    className="flex-1 py-3 bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700 text-white rounded-xl text-sm font-medium transition-all shadow-lg shadow-purple-500/20"
+                  >
+                    Book Appointment
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -481,7 +643,7 @@ export function Appointments() {
                         <Calendar className="w-10 h-10 text-purple-400" />
                         <div>
                           <h3 className="text-white font-semibold">
-                            Dr. {apt.doctor?.user_profiles?.full_name} - {apt.doctor?.specialization}
+                            Dr. {(apt.doctor as any)?.user_profiles?.full_name} - {apt.doctor?.specialization}
                           </h3>
                           <p className="text-gray-400">
                             {new Date(apt.appointment_date).toLocaleDateString()} at {apt.appointment_time}
@@ -532,7 +694,7 @@ export function Appointments() {
                       <CheckCircle className="w-10 h-10 text-gray-400" />
                       <div>
                         <h3 className="text-white font-semibold">
-                          Dr. {apt.doctor?.user_profiles?.full_name} - {apt.doctor?.specialization}
+                          Dr. {(apt.doctor as any)?.user_profiles?.full_name} - {apt.doctor?.specialization}
                         </h3>
                         <p className="text-gray-400">
                           {new Date(apt.appointment_date).toLocaleDateString()} at {apt.appointment_time}

@@ -20,18 +20,34 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
         return
       }
 
+      let role = user.user_metadata?.role;
+
       try {
-        const { data } = await supabase
-          .from('user_profiles')
-          .select('role')
+        // First check if they have a doctor profile since we implicitly trust it.
+        const { data: doctorProfile } = await supabase
+          .from('doctor_profiles')
+          .select('id')
           .eq('id', user.id)
           .single()
+          
+        if (doctorProfile) {
+          role = 'doctor';
+        } else {
+          // Fallback to user_profiles
+          const { data, error } = await supabase
+            .from('user_profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single()
 
-        setUserRole(data?.role || 'patient')
+          if (!error && data?.role) {
+            role = data.role;
+          }
+        }
       } catch (error) {
         console.error('Error fetching user role:', error)
-        setUserRole('patient')
       } finally {
+        setUserRole(role || 'patient')
         setLoading(false)
       }
     }

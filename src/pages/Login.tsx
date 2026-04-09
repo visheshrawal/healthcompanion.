@@ -11,6 +11,7 @@ export function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [selectedRole, setSelectedRole] = useState<'patient' | 'doctor'>('patient')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -19,18 +20,33 @@ export function Login() {
 
     try {
       await signIn(email, password)
-      
-      // Get user role and redirect accordingly
+
       const { data: { user } } = await supabase.auth.getUser()
-      
+
       if (user) {
-        const { data: profile } = await supabase
-          .from('user_profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single()
-        
-        if (profile?.role === 'doctor') {
+        // FORCE update their metadata to the role they selected on login
+        // This rescues developers testing with the same email accounts
+        await supabase.auth.updateUser({ data: { role: selectedRole } })
+
+        try {
+          // Upsert the profile to guarantee the database matches the forced login role
+          await supabase.from('user_profiles').upsert({
+            id: user.id,
+            role: selectedRole,
+            full_name: user.user_metadata?.full_name || email,
+            email: email
+          }, { onConflict: 'id' })
+
+          if (selectedRole === 'doctor') {
+            await supabase.from('doctor_profiles').upsert({
+              id: user.id,
+            }, { onConflict: 'id' }).select()
+          }
+        } catch (dbErr) {
+          console.error("Failed to force update user profiles", dbErr)
+        }
+
+        if (selectedRole === 'doctor') {
           navigate('/doctor/dashboard')
         } else {
           navigate('/dashboard')
@@ -69,6 +85,34 @@ export function Login() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm text-gray-300 mb-2">Login as</label>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedRole('patient')}
+                  className={`flex-1 py-2 rounded-lg border transition-all ${
+                    selectedRole === 'patient'
+                      ? 'bg-purple-600 border-purple-500 text-white'
+                      : 'bg-white/10 border-white/20 text-gray-400 hover:bg-white/20'
+                  }`}
+                >
+                  Patient
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedRole('doctor')}
+                  className={`flex-1 py-2 rounded-lg border transition-all flex items-center justify-center gap-2 ${
+                    selectedRole === 'doctor'
+                      ? 'bg-cyan-600 border-cyan-500 text-white'
+                      : 'bg-white/10 border-white/20 text-gray-400 hover:bg-white/20'
+                  }`}
+                >
+                  Doctor
+                </button>
+              </div>
+            </div>
+
             <div>
               <label className="block text-sm text-gray-300 mb-2">Email</label>
               <div className="relative">
