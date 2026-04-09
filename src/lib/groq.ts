@@ -1,3 +1,4 @@
+// @ts-ignore - Suppress node-domexception warnings
 import Groq from 'groq-sdk'
 
 const groqApiKey = import.meta.env.VITE_GROQ_API_KEY
@@ -6,10 +7,11 @@ if (!groqApiKey) {
   console.warn('Missing Groq API key - AI features will be disabled')
 }
 
-export const groq = new Groq({
+// Create Groq instance only if API key exists
+export const groq = groqApiKey ? new Groq({
   apiKey: groqApiKey,
   dangerouslyAllowBrowser: true
-})
+}) : null
 
 export interface SymptomAnalysis {
   conditions: string[]
@@ -28,6 +30,10 @@ export interface ReportAnalysis {
 }
 
 export async function getAIResponse(prompt: string, systemPrompt?: string) {
+  if (!groq) {
+    throw new Error('Groq API key not configured')
+  }
+  
   try {
     const completion = await groq.chat.completions.create({
       messages: [
@@ -53,6 +59,16 @@ export async function getAIResponse(prompt: string, systemPrompt?: string) {
 }
 
 export async function analyzeSymptoms(symptoms: string[]): Promise<SymptomAnalysis> {
+  if (!groq) {
+    return {
+      conditions: ['AI features disabled - API key missing'],
+      urgencyLevel: 'Medium',
+      urgencyColor: 'yellow',
+      recommendations: ['Configure Groq API key in environment variables', 'Consult with a healthcare professional'],
+      disclaimer: 'AI analysis is currently unavailable. Please consult a doctor.'
+    }
+  }
+
   const prompt = `Patient reported symptoms: ${symptoms.join(', ')}. 
   
   Return a JSON object with this exact structure (no markdown, just raw JSON):
@@ -67,9 +83,9 @@ export async function analyzeSymptoms(symptoms: string[]): Promise<SymptomAnalys
 
   const systemPrompt = `You are a medical AI assistant. Return ONLY valid JSON, no markdown formatting, no backticks, just the raw JSON object.`
   
-  const response = await getAIResponse(prompt, systemPrompt)
-  
   try {
+    const response = await getAIResponse(prompt, systemPrompt)
+    
     // Clean the response - remove any markdown code blocks if present
     let cleanedResponse = response
       .replace(/```json\n?/g, '')
@@ -88,7 +104,7 @@ export async function analyzeSymptoms(symptoms: string[]): Promise<SymptomAnalys
       urgencyColor
     }
   } catch (error) {
-    console.error('Failed to parse AI response:', response)
+    console.error('Failed to parse AI response:', error)
     // Fallback structured response
     return {
       conditions: ['Unable to analyze - please consult a doctor'],
@@ -101,6 +117,16 @@ export async function analyzeSymptoms(symptoms: string[]): Promise<SymptomAnalys
 }
 
 export async function analyzeMedicalReport(reportText: string): Promise<ReportAnalysis> {
+  if (!groq) {
+    return {
+      summary: 'AI features disabled - API key missing',
+      abnormalValues: [],
+      normalValues: [],
+      recommendations: ['Configure Groq API key in environment variables'],
+      followUp: 'Please consult with your healthcare provider.'
+    }
+  }
+
   const prompt = `Analyze this medical report and return a JSON object with this exact structure:
   ${reportText}
   
@@ -117,9 +143,9 @@ export async function analyzeMedicalReport(reportText: string): Promise<ReportAn
 
   const systemPrompt = `You are a medical AI assistant. Return ONLY valid JSON, no markdown formatting, no backticks, just the raw JSON object.`
   
-  const response = await getAIResponse(prompt, systemPrompt)
-  
   try {
+    const response = await getAIResponse(prompt, systemPrompt)
+    
     let cleanedResponse = response
       .replace(/```json\n?/g, '')
       .replace(/```\n?/g, '')
@@ -127,7 +153,7 @@ export async function analyzeMedicalReport(reportText: string): Promise<ReportAn
     
     return JSON.parse(cleanedResponse)
   } catch (error) {
-    console.error('Failed to parse AI response:', response)
+    console.error('Failed to parse AI response:', error)
     return {
       summary: 'Unable to analyze report automatically. Please review manually.',
       abnormalValues: [],

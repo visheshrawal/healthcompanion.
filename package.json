@@ -50,9 +50,4 @@
     "typescript-eslint": "^8.58.0",
     "vite": "^8.0.4"
   }
-{
-    "overrides": {
-      "node-domexception": "npm:dom-exception@^4.0.0"
-    }
-  }
 }
