@@ -43,6 +43,7 @@ interface Doctor {
   hospital?: string
   total_reviews?: number
   phone?: string
+  user_profiles?: any
 }
 
 interface Appointment {
