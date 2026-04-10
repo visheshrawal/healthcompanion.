@@ -10,7 +10,9 @@ import {
   User,
   ChevronRight,
   Clock,
-  DollarSign
+  DollarSign,
+  Activity,
+  MessageSquare
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
@@ -20,7 +22,8 @@ const navItems = [
   { path: '/doctor/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/doctor/appointments', icon: Calendar, label: 'Appointments' },
   { path: '/doctor/patients', icon: Users, label: 'Patients' },
-  { path: '/doctor/prescriptions', icon: FileText, label: 'Prescriptions' },
+  { path: '/doctor/prescriptions', icon: Activity, label: 'Prescriptions' },
+  { path: '/doctor/chat', icon: MessageSquare, label: 'Chat with Patients' },
   { path: '/doctor/profile', icon: User, label: 'Profile' },
   { path: '/doctor/settings', icon: Settings, label: 'Settings' },
 ]
@@ -34,6 +37,9 @@ export function DoctorSidebar() {
 
   useEffect(() => {
     loadDoctorProfile()
+    // Re-fetch whenever profile is saved from DoctorProfile page
+    window.addEventListener('doctor-profile-updated', loadDoctorProfile)
+    return () => window.removeEventListener('doctor-profile-updated', loadDoctorProfile)
   }, [user])
 
   const loadDoctorProfile = async () => {
@@ -41,16 +47,17 @@ export function DoctorSidebar() {
     
     try {
       const { data } = await supabase
-        .from('user_profiles')
-        .select('full_name, avatar_url')
-        .eq('id', user.id)
-        .single()
-
-      if (data) {
-        setAvatarUrl(data.avatar_url)
-        setDoctorName(data.full_name?.split(' ')[0] || 'Doctor')
-      }
-
+          .from('user_profiles')
+          .select('full_name, avatar_url')
+          .eq('id', user.id)
+          .single()
+  
+      const ultimateName = data?.full_name || user.user_metadata?.full_name || 'Doctor'
+      const ultimateAvatar = data?.avatar_url || user.user_metadata?.avatar_url || null
+  
+      setAvatarUrl(ultimateAvatar)
+      setDoctorName(ultimateName.split(' ')[0])
+  
       // Load today's stats
       const today = new Date().toISOString().split('T')[0]
       const { data: appointments } = await supabase

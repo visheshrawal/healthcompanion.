@@ -29,12 +29,17 @@ export interface ReportAnalysis {
   followUp: string
 }
 
-export async function getAIResponse(prompt: string, systemPrompt?: string) {
+export async function getAIResponse(prompt: string, systemPrompt?: string, imageBase64?: string) {
   if (!groq) {
     throw new Error('Groq API key not configured')
   }
   
   try {
+    const userContent: any = imageBase64 ? [
+      { type: 'text', text: prompt },
+      { type: 'image_url', image_url: { url: imageBase64.startsWith('data:') ? imageBase64 : `data:image/jpeg;base64,${imageBase64}` } }
+    ] : prompt;
+
     const completion = await groq.chat.completions.create({
       messages: [
         {
@@ -43,10 +48,10 @@ export async function getAIResponse(prompt: string, systemPrompt?: string) {
         },
         {
           role: 'user',
-          content: prompt
+          content: userContent
         }
       ],
-      model: 'llama-3.3-70b-versatile',
+      model: imageBase64 ? 'llama-3.2-90b-vision-preview' : 'llama-3.3-70b-versatile',
       temperature: 0.7,
       max_tokens: 1024,
     })
@@ -116,7 +121,7 @@ export async function analyzeSymptoms(symptoms: string[]): Promise<SymptomAnalys
   }
 }
 
-export async function analyzeMedicalReport(reportText: string): Promise<ReportAnalysis> {
+export async function analyzeMedicalReport(reportText: string, imageBase64?: string): Promise<ReportAnalysis> {
   if (!groq) {
     return {
       summary: 'AI features disabled - API key missing',
@@ -128,7 +133,7 @@ export async function analyzeMedicalReport(reportText: string): Promise<ReportAn
   }
 
   const prompt = `Analyze this medical report and return a JSON object with this exact structure:
-  ${reportText}
+  ${reportText || 'See attached image report.'}
   
   Return format (no markdown, just raw JSON):
   {
@@ -144,7 +149,7 @@ export async function analyzeMedicalReport(reportText: string): Promise<ReportAn
   const systemPrompt = `You are a medical AI assistant. Return ONLY valid JSON, no markdown formatting, no backticks, just the raw JSON object.`
   
   try {
-    const response = await getAIResponse(prompt, systemPrompt)
+    const response = await getAIResponse(prompt, systemPrompt, imageBase64)
     
     let cleanedResponse = response
       .replace(/```json\n?/g, '')
@@ -161,5 +166,30 @@ export async function analyzeMedicalReport(reportText: string): Promise<ReportAn
       recommendations: ['Consult with your healthcare provider for proper interpretation'],
       followUp: 'Schedule an appointment with your doctor to discuss these results.'
     }
+  }
+}
+
+export async function analyzeMedicalAudio(transcriptText: string): Promise<string> {
+  if (!groq) {
+    return "AI features disabled - API key missing"
+  }
+
+  const prompt = `Please summarize the following highly informal patient medical audio transcript into a concise, professional medical record using this format:
+- Patient Subjective / Symptoms
+- Doctor's Objective / Observations
+- Assessment & Diagnosis
+- Treatment Plan & Next Steps
+
+Transcript:
+"${transcriptText}"`
+
+  const systemPrompt = `You are a professional Medical Scribe AI. Convert disorganized spoken audio transcripts to extremely sharp clinical notes. Return raw text with bullet points, no markdown blocks.`
+  
+  try {
+    const response = await getAIResponse(prompt, systemPrompt)
+    return response.trim()
+  } catch (error) {
+    console.error('Error analyzing audio:', error)
+    return "Failed to analyze medical audio transcript."
   }
 }

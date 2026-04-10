@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 
-interface DemoAppointment {
+export interface DemoAppointment {
   id: string | number
   patient_name: string
   patient_age?: number
@@ -18,7 +18,7 @@ interface DemoAppointment {
   isDemo?: boolean
 }
 
-const DEMO_APPOINTMENTS: DemoAppointment[] = [
+export const DEMO_APPOINTMENTS: DemoAppointment[] = [
   {
     id: 'demo-1',
     patient_name: 'Rajesh Kumar',
@@ -112,9 +112,9 @@ const DEMO_APPOINTMENTS: DemoAppointment[] = [
   }
 ]
 
-const PRIORITY_ORDER: Record<string, number> = { emergency: 0, high: 1, normal: 2, low: 3 }
+export const PRIORITY_ORDER: Record<string, number> = { emergency: 0, high: 1, normal: 2, low: 3 }
 
-const PRIORITY_CONFIG = {
+export const PRIORITY_CONFIG = {
   emergency: {
     label: 'Emergency',
     bg: 'bg-red-500/20',
@@ -159,6 +159,16 @@ export function DoctorAppointments() {
   const [expandedId, setExpandedId] = useState<string | number | null>(null)
   const [editingId, setEditingId] = useState<string | number | null>(null)
   const [editForm, setEditForm] = useState({ priority: '', date: '', time: '' })
+  // Tracks which card is mid-rejection animation
+  const [rejectingId, setRejectingId] = useState<string | number | null>(null)
+  // Tracks which card is mid-acceptance animation
+  const [acceptingId, setAcceptingId] = useState<string | number | null>(null)
+  // Suggest New Time modal
+  const [suggestModal, setSuggestModal] = useState<{ open: boolean; apt: DemoAppointment | null }>({ open: false, apt: null })
+  const [suggestForm, setSuggestForm] = useState({ date: '', time: '' })
+  // Message Patient modal
+  const [messageModal, setMessageModal] = useState<{ open: boolean; apt: DemoAppointment | null }>({ open: false, apt: null })
+  const [messageText, setMessageText] = useState('')
 
   const convertTo24Hour = (timeStr: string) => {
     if (!timeStr) return ''
@@ -192,15 +202,19 @@ export function DoctorAppointments() {
 
   const loadAppointments = async () => {
     try {
-      const { data } = await supabase
+      // Read patient_name directly from appointment row — no cross-user RLS issue
+      const { data, error } = await supabase
         .from('appointments')
-        .select(`*, patient:patient_id(email, user_profiles(full_name))`)
+        .select('*')
         .eq('doctor_id', user!.id)
         .order('appointment_date', { ascending: true })
 
+      if (error) throw error
+
       const realApts: DemoAppointment[] = (data || []).map((apt: any) => ({
         id: apt.id,
-        patient_name: (apt.patient as any)?.user_profiles?.full_name || 'Unknown Patient',
+        patient_name: apt.patient_name || 'Unknown Patient',
+        patient_phone: apt.patient_phone || '',
         appointment_date: apt.appointment_date,
         appointment_time: apt.appointment_time,
         status: apt.status,
@@ -225,10 +239,69 @@ export function DoctorAppointments() {
       setAppointments(prev => prev.map(a => a.id === id ? { ...a, status } : a))
       return
     }
+    // Animate rejection: red sweep then remove card
+    if (status === 'rejected') {
+      setRejectingId(id)
+      supabase.from('appointments').update({ status: 'rejected' }).eq('id', id).then(() => {})
+      setTimeout(() => {
+        setAppointments(prev => prev.filter(a => a.id !== id))
+        setRejectingId(null)
+      }, 900)
+      return
+    }
+    // Animate acceptance: green sweep
+    if (status === 'confirmed') {
+      setAcceptingId(id)
+      setTimeout(() => setAcceptingId(null), 900)
+    }
     try {
       await supabase.from('appointments').update({ status }).eq('id', id)
       setAppointments(prev => prev.map(a => a.id === id ? { ...a, status } : a))
     } catch (e) { console.error(e) }
+  }
+
+  const handleSendMessage = async () => {
+    if (!messageModal.apt || !messageText.trim() || !user) return
+    const apt = messageModal.apt
+    // Skip demo appointments
+    if (typeof apt.id === 'string' && apt.id.startsWith('demo-')) {
+      alert('Demo patients cannot receive real messages.')
+      return
+    }
+    try {
+      await supabase.from('messages').insert({
+        appointment_id: apt.id,
+        sender_id: user!.id,
+        sender_role: 'doctor',
+        content: messageText.trim()
+      })
+      setMessageText('')
+      setMessageModal({ open: false, apt: null })
+    } catch (e) {
+      console.error('Failed to send message:', e)
+    }
+  }
+
+  const handleSuggestTime = async () => {
+    if (!suggestModal.apt) return
+    const apt = suggestModal.apt
+    const time12hr = convertTo12Hour(suggestForm.time) || suggestForm.time
+    if (typeof apt.id !== 'string' || !apt.id.startsWith('demo-')) {
+      try {
+        await supabase.from('appointments').update({
+          appointment_date: suggestForm.date,
+          appointment_time: time12hr,
+          status: 'pending'
+        }).eq('id', apt.id)
+      } catch (e) { console.error(e) }
+    }
+    setAppointments(prev => prev.map(a =>
+      a.id === apt.id
+        ? { ...a, appointment_date: suggestForm.date, appointment_time: time12hr, status: 'pending' }
+        : a
+    ))
+    setSuggestModal({ open: false, apt: null })
+    setSuggestForm({ date: '', time: '' })
   }
 
   const handleSaveEdit = async (id: string | number) => {
@@ -257,7 +330,9 @@ export function DoctorAppointments() {
     } catch (e) { console.error(e) }
   }
 
-  const filtered = appointments.filter(apt => {
+  // Exclude permanently rejected (real) appointments — they were already removed via animation
+  // but also guard against stale state showing rejected on refresh
+  const filtered = appointments.filter(apt => apt.status !== 'rejected').filter(apt => {
     const q = searchQuery.toLowerCase()
     const matchSearch = apt.patient_name.toLowerCase().includes(q) || apt.patient_issue.toLowerCase().includes(q)
     const matchPriority = priorityFilter === 'all' || apt.priority === priorityFilter
@@ -277,6 +352,81 @@ export function DoctorAppointments() {
       <DoctorSidebar />
       <div className="ml-64 p-8">
         <div className="max-w-7xl mx-auto">
+
+          {/* Inline keyframes for reject animation */}
+          <style>{`
+            @keyframes rejectSweep {
+              0% { box-shadow: inset 0 0 0 0 rgba(239,68,68,0); background: transparent; }
+              30% { box-shadow: inset 200px 0 0 0 rgba(239,68,68,0.25); }
+              70% { box-shadow: inset 2000px 0 0 0 rgba(239,68,68,0.4); opacity: 1; transform: translateX(0); }
+              100% { opacity: 0; transform: translateX(60px); }
+            }
+            .rejecting-card {
+              animation: rejectSweep 0.85s ease-in-out forwards;
+              pointer-events: none;
+            }
+            @keyframes acceptSweep {
+              0% { box-shadow: inset 0 0 0 0 rgba(34,197,94,0); }
+              40% { box-shadow: inset 300px 0 0 0 rgba(34,197,94,0.2); }
+              100% { box-shadow: inset 3000px 0 0 0 rgba(34,197,94,0); }
+            }
+            .accepting-card {
+              animation: acceptSweep 0.85s ease-out forwards;
+            }
+          `}</style>
+
+          {/* Message Patient Modal */}
+          {messageModal.open && messageModal.apt && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-[#1a2035] border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+                <h3 className="text-white font-bold text-lg mb-1">Message Patient</h3>
+                <p className="text-gray-400 text-sm mb-5">Send a message to <span className="text-purple-300 font-medium">{messageModal.apt.patient_name}</span></p>
+                <textarea
+                  value={messageText}
+                  onChange={e => setMessageText(e.target.value)}
+                  placeholder="Type your message here..."
+                  rows={4}
+                  className="w-full bg-[#0d1525] border border-white/10 rounded-xl p-3 text-white placeholder-gray-500 focus:border-purple-500 outline-none resize-none text-sm"
+                />
+                <div className="flex gap-3 mt-4">
+                  <button onClick={() => { setMessageModal({ open: false, apt: null }); setMessageText('') }}
+                    className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 transition-all text-sm">Cancel</button>
+                  <button onClick={handleSendMessage} disabled={!messageText.trim()}
+                    className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-600 text-white font-medium hover:from-purple-700 hover:to-cyan-700 transition-all text-sm disabled:opacity-40">
+                    Send Message
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          {suggestModal.open && suggestModal.apt && (
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-[#1a2035] border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+                <h3 className="text-white font-bold text-lg mb-1">Suggest New Time</h3>
+                <p className="text-gray-400 text-sm mb-5">Propose a new appointment slot for <span className="text-purple-300 font-medium">{suggestModal.apt.patient_name}</span></p>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">New Date</label>
+                    <input type="date" value={suggestForm.date} onChange={e => setSuggestForm({...suggestForm, date: e.target.value})}
+                      className="w-full bg-[#0d1525] border border-white/10 rounded-xl p-3 text-white focus:border-purple-500 outline-none [color-scheme:dark]" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1">New Time</label>
+                    <input type="time" value={suggestForm.time} onChange={e => setSuggestForm({...suggestForm, time: e.target.value})}
+                      className="w-full bg-[#0d1525] border border-white/10 rounded-xl p-3 text-white focus:border-purple-500 outline-none [color-scheme:dark]" />
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-6">
+                  <button onClick={() => setSuggestModal({ open: false, apt: null })}
+                    className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-gray-300 hover:bg-white/10 transition-all text-sm">Cancel</button>
+                  <button onClick={handleSuggestTime} disabled={!suggestForm.date || !suggestForm.time}
+                    className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-600 text-white font-medium hover:from-purple-700 hover:to-cyan-700 transition-all text-sm disabled:opacity-40">
+                    Send Suggestion
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-white mb-1">Patient Appointments</h1>
@@ -357,6 +507,8 @@ export function DoctorAppointments() {
                   <div
                     key={apt.id}
                     className={`rounded-2xl border backdrop-blur-xl transition-all duration-300 overflow-hidden ${
+                      rejectingId === apt.id ? 'rejecting-card' :
+                      acceptingId === apt.id ? 'accepting-card' :
                       apt.priority === 'emergency'
                         ? 'bg-red-950/20 border-red-500/30'
                         : 'bg-[#1a2035]/50 border-white/10 hover:border-white/20'
@@ -485,6 +637,11 @@ export function DoctorAppointments() {
                                     className="px-4 py-2 bg-red-600/20 border border-red-500/30 text-red-400 rounded-lg text-sm hover:bg-red-600/40 transition-all flex items-center gap-2">
                                     <XCircle className="w-4 h-4" /> Reject
                                   </button>
+                                  <button
+                                    onClick={() => { setSuggestModal({ open: true, apt }); setSuggestForm({ date: apt.appointment_date, time: convertTo24Hour(apt.appointment_time) }) }}
+                                    className="px-4 py-2 bg-amber-600/20 border border-amber-500/30 text-amber-400 rounded-lg text-sm hover:bg-amber-600/40 transition-all flex items-center gap-2">
+                                    <Clock className="w-4 h-4" /> Suggest Time
+                                  </button>
                                 </>
                               )}
                               {apt.status === 'pending' && apt.isDemo && (
@@ -498,7 +655,9 @@ export function DoctorAppointments() {
                                   <button className="px-4 py-2 bg-blue-600/20 border border-blue-500/30 text-blue-400 rounded-lg text-sm flex items-center gap-2">
                                     <Video className="w-4 h-4" /> Start Video Call
                                   </button>
-                                  <button className="px-4 py-2 bg-purple-600/20 border border-purple-500/30 text-purple-400 rounded-lg text-sm flex items-center gap-2">
+                                  <button
+                                    onClick={() => setMessageModal({ open: true, apt })}
+                                    className="px-4 py-2 bg-purple-600/20 border border-purple-500/30 text-purple-400 rounded-lg text-sm hover:bg-purple-600/40 transition-all flex items-center gap-2">
                                     <MessageSquare className="w-4 h-4" /> Message Patient
                                   </button>
                                   {!apt.isDemo && (

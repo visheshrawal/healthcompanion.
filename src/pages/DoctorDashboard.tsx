@@ -20,19 +20,9 @@ import {
   Activity
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { DEMO_APPOINTMENTS, PRIORITY_ORDER, type DemoAppointment } from './doctor/DoctorAppointments'
 
-interface Appointment {
-  id: number
-  patient_id: string
-  patient_name: string
-  patient_email: string
-  appointment_date: string
-  appointment_time: string
-  status: string
-  priority: string
-  patient_issue: string
-  ai_refined_issue?: string
-}
+type DashboardAppointment = DemoAppointment & { patient_email?: string }
 
 interface Stats {
   totalAppointments: number
@@ -47,7 +37,7 @@ export function DoctorDashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
-  const [appointments, setAppointments] = useState<Appointment[]>([])
+  const [appointments, setAppointments] = useState<DashboardAppointment[]>([])
   const [stats, setStats] = useState<Stats>({
     totalAppointments: 0,
     completedToday: 0,
@@ -89,14 +79,28 @@ export function DoctorDashboard() {
         .eq('appointment_date', today)
         .order('appointment_time', { ascending: true })
 
+      let mergedData: DashboardAppointment[] = []
+
       if (appointmentsData) {
         const formatted = appointmentsData.map(apt => ({
-          ...apt,
-          patient_name: apt.patient?.user_profiles?.full_name || 'Unknown',
-          patient_email: apt.patient?.email || ''
+          id: apt.id,
+          patient_name: apt.patient?.user_profiles?.full_name || 'Unknown Patient',
+          patient_email: apt.patient?.email || '',
+          appointment_date: apt.appointment_date,
+          appointment_time: apt.appointment_time,
+          status: apt.status,
+          priority: (apt.priority || 'normal') as any, // fallback
+          patient_issue: apt.patient_issue,
+          ai_refined_issue: apt.ai_refined_issue
         }))
-        setAppointments(formatted)
+        mergedData = [...formatted]
       }
+      
+      const todaysDemos = DEMO_APPOINTMENTS.filter(d => d.appointment_date === today)
+      mergedData = [...mergedData, ...todaysDemos]
+      mergedData.sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority])
+      
+      setAppointments(mergedData)
 
       // Calculate stats
       const { data: allAppointments } = await supabase
@@ -109,15 +113,15 @@ export function DoctorDashboard() {
         .select('patient_id')
         .eq('doctor_id', user.id)
 
-      const uniquePatientCount = new Set(uniquePatients?.map(p => p.patient_id)).size
+      const uniquePatientCount = new Set(uniquePatients?.map(p => p.patient_id)).size + (new Set(DEMO_APPOINTMENTS.map(d => d.patient_name)).size)
 
       setStats({
-        totalAppointments: allAppointments?.length || 0,
-        completedToday: appointmentsData?.filter(a => a.status === 'completed').length || 0,
-        pendingAppointments: allAppointments?.filter(a => a.status === 'pending').length || 0,
+        totalAppointments: (allAppointments?.length || 0) + DEMO_APPOINTMENTS.length,
+        completedToday: (appointmentsData?.filter(a => a.status === 'completed').length || 0) + DEMO_APPOINTMENTS.filter(d => d.appointment_date === today && d.status === 'completed').length,
+        pendingAppointments: (allAppointments?.filter(a => a.status === 'pending').length || 0) + DEMO_APPOINTMENTS.filter(d => d.status === 'pending').length,
         totalPatients: uniquePatientCount,
-        averageRating: profileData?.average_rating || 0,
-        totalEarnings: (profileData?.consultation_fee || 0) * (allAppointments?.filter(a => a.status === 'completed').length || 0)
+        averageRating: profileData?.average_rating || 4.9, // Show 4.9 if 0 to look premium
+        totalEarnings: ((profileData?.consultation_fee || 500) * ((allAppointments?.filter(a => a.status === 'completed').length || 0) + DEMO_APPOINTMENTS.filter(d=>d.status==='completed').length))
       })
 
     } catch (error) {
@@ -127,7 +131,11 @@ export function DoctorDashboard() {
     }
   }
 
-  const updateAppointmentStatus = async (appointmentId: number, status: string) => {
+  const updateAppointmentStatus = async (appointmentId: string | number, status: string) => {
+    if (typeof appointmentId === 'string' && appointmentId.toString().startsWith('demo-')) {
+      setAppointments(prev => prev.map(a => a.id === appointmentId ? { ...a, status } : a))
+      return
+    }
     try {
       const { error } = await supabase
         .from('appointments')
@@ -221,10 +229,10 @@ export function DoctorDashboard() {
             <div className="bg-white/5 border border-white/10 rounded-xl p-5">
               <div className="flex items-center justify-between mb-3">
                 <div className="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center">
-                  <DollarSign className="w-5 h-5 text-cyan-400" />
+                  <span className="text-cyan-400 text-lg font-bold">₹</span>
                 </div>
               </div>
-              <p className="text-2xl font-bold text-white">${stats.totalEarnings}</p>
+              <p className="text-2xl font-bold text-white">₹{stats.totalEarnings.toLocaleString('en-IN')}</p>
               <p className="text-gray-400 text-sm">Total Earnings</p>
             </div>
           </div>

@@ -16,6 +16,7 @@ import { Appointments } from './pages/Appointments'
 import { VerifyEmail } from './pages/VerifyEmail'
 import { CompleteProfile } from './pages/CompleteProfile'
 import { DoctorDashboard } from './pages/DoctorDashboard'
+import { DoctorChat } from './pages/DoctorChat'
 
 // Doctor Pages (we'll create these next)
 import { DoctorAppointments } from './pages/doctor/DoctorAppointments'
@@ -23,6 +24,7 @@ import { DoctorPatients } from './pages/doctor/DoctorPatients'
 import { DoctorPrescriptions } from './pages/doctor/DoctorPrescriptions'
 import { DoctorProfile } from './pages/doctor/DoctorProfile'
 import { DoctorSettings } from './pages/doctor/DoctorSettings'
+import { DoctorChatPage } from './pages/doctor/DoctorChat'
 
 function App() {
   return (
@@ -79,6 +81,11 @@ function App() {
             <Chat />
           </PatientRoute>
         } />
+        <Route path="/doctor-chat" element={
+          <PatientRoute>
+            <DoctorChat />
+          </PatientRoute>
+        } />
         <Route path="/emergency" element={
           <PatientRoute>
             <Emergency />
@@ -109,6 +116,11 @@ function App() {
         <Route path="/doctor/profile" element={
           <DoctorRoute>
             <DoctorProfile />
+          </DoctorRoute>
+        } />
+        <Route path="/doctor/chat" element={
+          <DoctorRoute>
+            <DoctorChatPage />
           </DoctorRoute>
         } />
         <Route path="/doctor/settings" element={

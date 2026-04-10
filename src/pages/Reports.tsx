@@ -31,6 +31,7 @@ interface Report {
   type: string
   file_url: string
   file_content?: string
+  image_base64?: string
   ai_analysis?: ReportAnalysis
 }
 
@@ -99,24 +100,36 @@ export function Reports() {
     
     try {
       let fileContent = reportText
-      
+      let imageBase64 = ''
+
       if (newReportFile) {
-        // Read file content
-        fileContent = await new Promise((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload = (e) => resolve(e.target?.result as string)
-          reader.onerror = reject
-          reader.readAsText(newReportFile)
-        })
+        if (newReportFile.type.startsWith('image/')) {
+          // Read as Data URL for Image Vision AI
+          imageBase64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = (e) => resolve(e.target?.result as string)
+            reader.onerror = reject
+            reader.readAsDataURL(newReportFile)
+          })
+          fileContent = '' // It's an image, no raw text content
+        } else {
+          fileContent = await new Promise((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = (e) => resolve(e.target?.result as string)
+            reader.onerror = reject
+            reader.readAsText(newReportFile)
+          })
+        }
       }
 
       const newReport: Report = {
         id: Date.now().toString(),
         name: newReportFile?.name || `Report - ${new Date().toLocaleDateString()}`,
         date: new Date().toISOString().split('T')[0],
-        type: uploadMode === 'file' ? 'Uploaded Report' : 'Text Report',
+        type: uploadMode === 'file' ? (newReportFile?.type.startsWith('image/') ? 'Image Report' : 'Uploaded Report') : 'Text Report',
         file_url: '#',
-        file_content: fileContent
+        file_content: fileContent,
+        image_base64: imageBase64
       }
 
       const updatedReports = [newReport, ...reports]
@@ -140,15 +153,15 @@ export function Reports() {
 
   const analyzeReport = async (reportId: string) => {
     const report = reports.find(r => r.id === reportId)
-    if (!report || !report.file_content) {
-      alert('No report content to analyze')
+    if (!report || (!report.file_content && !report.image_base64)) {
+      alert('No report content or image to analyze')
       return
     }
 
     setAnalyzing(reportId)
     
     try {
-      const analysis = await analyzeMedicalReport(report.file_content)
+      const analysis = await analyzeMedicalReport(report.file_content || '', report.image_base64)
       
       const updatedReports = reports.map(r => {
         if (r.id === reportId) {
@@ -248,7 +261,7 @@ export function Reports() {
                             <FileText className="w-5 h-5 text-purple-400 flex-shrink-0" />
                             <div className="min-w-0">
                               <p className="text-white text-sm font-medium truncate">{report.name}</p>
-                              <p className="text-gray-400 text-xs mt-1">{report.date}</p>
+                              <p className="text-gray-400 text-xs mt-1">{report.type} • {report.date}</p>
                             </div>
                           </div>
                           <button
@@ -309,7 +322,7 @@ export function Reports() {
                       <p className="text-gray-400 text-sm">Uploaded on {selectedReport.date}</p>
                     </div>
                     <div className="flex gap-2">
-                      {!selectedReport.ai_analysis && selectedReport.file_content && (
+                      {!selectedReport.ai_analysis && (selectedReport.file_content || selectedReport.image_base64) && (
                         <button
                           onClick={() => analyzeReport(selectedReport.id)}
                           disabled={analyzing === selectedReport.id}
@@ -330,6 +343,12 @@ export function Reports() {
                       )}
                     </div>
                   </div>
+
+                  {selectedReport.image_base64 && (
+                    <div className="mb-6 rounded-xl overflow-hidden border border-white/10 bg-black/50">
+                      <img src={selectedReport.image_base64} alt="Report Preview" className="w-full max-h-[400px] object-contain" />
+                    </div>
+                  )}
 
                   {selectedReport.ai_analysis ? (
                     <div className="space-y-4">
@@ -417,7 +436,7 @@ export function Reports() {
                     </div>
                   ) : (
                     <div className="text-center py-12">
-                      {selectedReport.file_content ? (
+                      {selectedReport.file_content || selectedReport.image_base64 ? (
                         <>
                           <Brain className="w-16 h-16 text-gray-500 mx-auto mb-4" />
                           <p className="text-gray-400 mb-4">Click "AI Analyze" to get insights from your report</p>
@@ -426,7 +445,7 @@ export function Reports() {
                         <>
                           <FileText className="w-16 h-16 text-gray-500 mx-auto mb-4" />
                           <p className="text-gray-400">Report content not available for analysis</p>
-                          <p className="text-sm text-gray-500 mt-2">Try uploading a text-based report</p>
+                          <p className="text-sm text-gray-500 mt-2">Try uploading a text-based report or image</p>
                         </>
                       )}
                     </div>
@@ -500,13 +519,13 @@ export function Reports() {
                     {newReportFile ? newReportFile.name : 'Choose a file'}
                   </p>
                   <p className="text-xs text-gray-500 mb-4">
-                    Supported formats: .txt, .pdf (text only), .doc
+                    Supported formats: .jpg, .png, .txt, .pdf (text only), .doc
                   </p>
                   <label className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg cursor-pointer text-sm">
                     Browse Files
                     <input
                       type="file"
-                      accept=".txt,.pdf,.doc,.docx"
+                      accept="image/*,.txt,.pdf,.doc,.docx"
                       onChange={(e) => setNewReportFile(e.target.files?.[0] || null)}
                       className="hidden"
                     />

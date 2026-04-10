@@ -24,6 +24,7 @@ const navItems = [
   { path: '/dashboard/medications', icon: Pill, label: 'Medications' },
   { path: '/symptom-checker', icon: Stethoscope, label: 'Symptom Checker' },
   { path: '/appointments', icon: Calendar, label: 'Appointments' },
+  { path: '/doctor-chat', icon: MessageSquare, label: 'Chat with Doctor' },
   { path: '/reports', icon: FileBarChart, label: 'Reports' },
   { path: '/hospitals', icon: Hospital, label: 'Nearby Hospitals' },
   { path: '/profile', icon: User, label: 'Profile' },

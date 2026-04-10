@@ -217,38 +217,44 @@ export function Appointments() {
   const loadDoctors = async () => {
     setLoading(true)
     try {
-      // Try to load from Supabase first
-      const { data, error } = await supabase
+      // 1. Fetch all doctors from database directly
+      const { data: docData, error: docError } = await supabase
         .from('doctor_profiles')
-        .select(`
-          id,
-          specialization,
-          experience_years,
-          consultation_fee,
-          about,
-          languages,
-          is_available,
-          average_rating,
-          user_profiles!inner(full_name, avatar_url)
-        `)
+        .select('*');
 
       let formattedDoctors: Doctor[] = []
       
-      if (!error && data && data.length > 0) {
+      if (!docError && docData && docData.length > 0) {
+        
+        // 2. Fetch corresponding usernames for authentic doctors
+        const docIds = docData.map((d:any) => d.id);
+        const { data: usersData } = await supabase
+          .from('user_profiles')
+          .select('id, full_name, avatar_url')
+          .in('id', docIds);
+          
+        const userMap = new Map();
+        if (usersData) {
+           usersData.forEach((u:any) => userMap.set(u.id, u));
+        }
+
         // Format real doctors from Supabase
-        formattedDoctors = data.map((d: any) => ({
-          id: d.id,
-          full_name: d.user_profiles?.full_name || 'Dr.',
-          specialization: d.specialization,
-          experience_years: d.experience_years,
-          consultation_fee: d.consultation_fee || 0,
-          about: d.about,
-          languages: d.languages || [],
-          is_available: d.is_available,
-          average_rating: d.average_rating || 0,
-          avatar_url: d.user_profiles?.avatar_url,
-          available_slots: generateTimeSlots()
-        }))
+        formattedDoctors = docData.map((d: any) => {
+          const uDoc = userMap.get(d.id);
+          return {
+            id: d.id,
+            full_name: uDoc?.full_name || 'Dr.',
+            specialization: d.specialization,
+            experience_years: d.experience_years,
+            consultation_fee: d.consultation_fee || 0,
+            about: d.about,
+            languages: d.languages || ['English'],
+            is_available: d.is_available ?? true,
+            average_rating: d.average_rating || 5.0,
+            avatar_url: uDoc?.avatar_url,
+            available_slots: generateTimeSlots()
+          };
+        })
       }
       
       // Add mock doctors (always include them for demo)
@@ -327,11 +333,24 @@ export function Appointments() {
 
     try {
       const priority = await calculatePriority()
-      
+
+      // Fetch our own name to embed in the appointment row
+      // so the doctor can read it without cross-user RLS issues
+      let patientName = user.user_metadata?.full_name || ''
+      if (!patientName) {
+        const { data: myProfile } = await supabase
+          .from('user_profiles')
+          .select('full_name')
+          .eq('id', user.id)
+          .single()
+        patientName = myProfile?.full_name || user.email || 'Patient'
+      }
+
       const { error } = await supabase
         .from('appointments')
         .insert({
           patient_id: user.id,
+          patient_name: patientName,
           doctor_id: selectedDoctor.id,
           appointment_date: bookingData.appointment_date,
           appointment_time: bookingData.appointment_time,
@@ -347,12 +366,11 @@ export function Appointments() {
       setSelectedDoctor(null)
       setBookingData({ appointment_date: '', appointment_time: '', patient_issue: '', symptoms: [] })
       setAiRefinedIssue('')
-      
       loadAppointments()
-      alert('Appointment booked successfully! Waiting for doctor confirmation.')
-    } catch (error) {
+      alert('Appointment booked successfully! The doctor will confirm shortly.')
+    } catch (error: any) {
       console.error('Error booking appointment:', error)
-      alert('Failed to book appointment')
+      alert('Failed to book appointment: ' + error.message)
     }
   }
 

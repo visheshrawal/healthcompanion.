@@ -57,6 +57,15 @@ export function Medications() {
   useEffect(() => {
     const saved = localStorage.getItem('adherence')
     if (saved) setAdherenceData(JSON.parse(saved))
+
+    // LIVE SYNC LISTENER
+    const handleStorageSync = (e: StorageEvent) => {
+      if (e.key === 'healthcompanion_medications' && e.newValue) {
+        setMedications(JSON.parse(e.newValue))
+      }
+    }
+    window.addEventListener('storage', handleStorageSync)
+    return () => window.removeEventListener('storage', handleStorageSync)
   }, [])
 
   const saveAdherence = (data: Record<string, { total: number, taken: number }>) => {
